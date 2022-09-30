@@ -2,19 +2,18 @@
 
 namespace GraphQL\Type\Definition;
 
+use Exception;
 use GraphQL\Error\Error;
-use GraphQL\Error\SerializationError;
 use GraphQL\Language\AST\FloatValueNode;
 use GraphQL\Language\AST\IntValueNode;
 use GraphQL\Language\AST\Node;
-use GraphQL\Language\Printer;
 use GraphQL\Utils\Utils;
-
+use function is_array;
 use function is_bool;
 use function is_finite;
-use function is_float;
-use function is_int;
+use function is_nan;
 use function is_numeric;
+use function sprintf;
 
 class FloatType extends ScalarType
 {
@@ -25,43 +24,71 @@ class FloatType extends ScalarType
 values as specified by
 [IEEE 754](http://en.wikipedia.org/wiki/IEEE_floating_point). ';
 
-    public function serialize($value): float
+    /**
+     * @param mixed $value
+     *
+     * @return float|null
+     *
+     * @throws Error
+     */
+    public function serialize($value)
     {
-        $float = is_numeric($value) || is_bool($value)
-            ? (float) $value
-            : null;
+        return $this->coerceFloat($value);
+    }
 
-        if ($float === null || ! is_finite($float)) {
-            throw new SerializationError(
-                'Float cannot represent non numeric value: '
-                . Utils::printSafe($value)
+    private function coerceFloat($value)
+    {
+        if (is_array($value)) {
+            throw new Error(
+                sprintf('Float cannot represent an array value: %s', Utils::printSafe($value))
+            );
+        }
+
+        if ($value === '') {
+            throw new Error(
+                'Float cannot represent non numeric value: (empty string)'
+            );
+        }
+
+        $float = is_numeric($value) || is_bool($value) ? (float) $value : null;
+
+        if ($float === null || ! is_finite($float) || is_nan($float)) {
+            throw new Error(
+                'Float cannot represent non numeric value: ' .
+                Utils::printSafe($value)
             );
         }
 
         return $float;
     }
 
-    public function parseValue($value): float
+    /**
+     * @param mixed $value
+     *
+     * @return float|null
+     *
+     * @throws Error
+     */
+    public function parseValue($value)
     {
-        $float = is_float($value) || is_int($value)
-            ? (float) $value
-            : null;
-
-        if ($float === null || ! is_finite($float)) {
-            $notFloat = Utils::printSafe($value);
-            throw new Error("Float cannot represent non numeric value: {$notFloat}");
-        }
-
-        return $float;
+        return $this->coerceFloat($value);
     }
 
-    public function parseLiteral(Node $valueNode, ?array $variables = null)
+    /**
+     * @param Node         $valueNode
+     * @param mixed[]|null $variables
+     *
+     * @return float|null
+     *
+     * @throws Exception
+     */
+    public function parseLiteral($valueNode, ?array $variables = null)
     {
         if ($valueNode instanceof FloatValueNode || $valueNode instanceof IntValueNode) {
             return (float) $valueNode->value;
         }
 
-        $notFloat = Printer::doPrint($valueNode);
-        throw new Error("Float cannot represent non numeric value: {$notFloat}", $valueNode);
+        // Intentionally without message, as all information already in wrapped Exception
+        throw new Exception();
     }
 }
