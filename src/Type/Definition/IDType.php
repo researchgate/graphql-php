@@ -37,12 +37,22 @@ When expected as an input type, any string (such as `"4"`) or integer
      */
     public function serialize($value)
     {
-        $canCast = is_string($value)
-            || is_int($value)
-            || (is_object($value) && method_exists($value, '__toString'));
-
-        if (! $canCast) {
-            throw new Error('ID cannot represent value: ' . Utils::printSafe($value));
+        if ($value === true) {
+            return 'true';
+        }
+        if ($value === false) {
+            return 'false';
+        }
+        if ($value === null) {
+            return 'null';
+        }
+        if (is_array($value)) {
+            throw new Error(
+                'ID cannot represent an array value: ' . Utils::printSafe($value)
+            );
+        }
+        if (! is_scalar($value) && (! is_object($value) || ! method_exists($value, '__toString'))) {
+            throw new Error('ID cannot represent non scalar value: ' . Utils::printSafe($value));
         }
 
         return (string) $value;
@@ -58,7 +68,13 @@ When expected as an input type, any string (such as `"4"`) or integer
         if (is_string($value) || is_int($value)) {
             return (string) $value;
         }
-        throw new Error('ID cannot represent value: ' . Utils::printSafe($value));
+        if (is_array($value)) {
+            throw new Error(
+                'ID cannot represent an array value: ' . Utils::printSafe($value)
+            );
+        }
+
+        throw new Error('Cannot represent value as ID: ' . Utils::printSafe($value));
     }
 
     /**

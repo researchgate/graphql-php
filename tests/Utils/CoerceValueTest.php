@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace GraphQL\Tests\Utils;
 
 use GraphQL\Type\Definition\EnumType;
+use GraphQL\Type\Definition\IDType;
 use GraphQL\Type\Definition\InputObjectType;
+use GraphQL\Type\Definition\StringType;
 use GraphQL\Type\Definition\Type;
 use GraphQL\Utils\Utils;
 use GraphQL\Utils\Value;
@@ -13,6 +15,7 @@ use PHPUnit\Framework\TestCase;
 use function acos;
 use function log;
 use function pow;
+use function sprintf;
 
 class CoerceValueTest extends TestCase
 {
@@ -22,7 +25,7 @@ class CoerceValueTest extends TestCase
     /** @var InputObjectType */
     private $testInputObject;
 
-    public function setUp() : void
+    public function setUp(): void
     {
         $this->testEnum = new EnumType([
             'name'   => 'TestEnum',
@@ -41,44 +44,37 @@ class CoerceValueTest extends TestCase
         ]);
     }
 
-    /**
-     * Describe: coerceValue
-     */
-
-    /**
-     * Describe: for GraphQLString
-     *
-     * @see it('returns error for array input as string')
-     */
-    public function testCoercingAnArrayToGraphQLStringProducesAnError() : void
+    public function stringLikeTypes()
     {
-        $result = Value::coerceValue([1, 2, 3], Type::string());
-        $this->expectGraphQLError(
-            $result,
-            'Expected type String; String cannot represent a non string value: [1,2,3]'
-        );
-
-        self::assertEquals(
-            'String cannot represent a non string value: [1,2,3]',
-            $result['errors'][0]->getPrevious()->getMessage()
-        );
+        return [
+            [Type::string()],
+            [Type::id()],
+        ];
     }
 
     /**
-     * Describe: for GraphQLID
+     * Describe: coerceValue
      *
-     * @see it('returns error for array input as ID')
+     * @see it('returns error for array input as string')
+     *
+     * @param StringType|IDType $type
+     *
+     * @dataProvider stringLikeTypes
      */
-    public function testCoercingAnArrayToGraphQLIDProducesAnError() : void
+    public function testCoercingAnArrayToGraphQLStringProducesAnError($type) : void
     {
-        $result = Value::coerceValue([1, 2, 3], Type::id());
-        $this->expectGraphQLError(
+        $result = Value::coerceValue([1, 2, 3], $type);
+        $this->expectError(
             $result,
-            'Expected type ID; ID cannot represent value: [1,2,3]'
+            sprintf(
+                'Expected type %s; %s cannot represent an array value: [1,2,3]',
+                $type->name,
+                $type->name
+            )
         );
 
         self::assertEquals(
-            'ID cannot represent value: [1,2,3]',
+            sprintf('%s cannot represent an array value: [1,2,3]', $type->name),
             $result['errors'][0]->getPrevious()->getMessage()
         );
     }
@@ -86,61 +82,52 @@ class CoerceValueTest extends TestCase
     /**
      * Describe: for GraphQLInt
      */
-    private function expectGraphQLError($result, $expected)
+    public function expectError($result, $expected): void
     {
-        self::assertIsArray($result);
-        self::assertIsArray($result['errors']);
+        self::assertInternalType('array', $result);
+        self::assertInternalType('array', $result['errors']);
         self::assertCount(1, $result['errors']);
         self::assertEquals($expected, $result['errors'][0]->getMessage());
         self::assertEquals(Utils::undefined(), $result['value']);
     }
 
     /**
-     * @see it('returns value for integer')
+     * @see it('returns no error for int input')
      */
     public function testIntReturnsNoErrorForIntInput() : void
     {
-        $result = Value::coerceValue(1, Type::int());
-        $this->expectValue($result, 1);
-    }
-
-    /**
-     * @see it('returns error for numeric looking string')
-     */
-    public function testReturnsErrorForNumericLookingString()
-    {
         $result = Value::coerceValue('1', Type::int());
-        $this->expectGraphQLError($result, 'Expected type Int; Int cannot represent non-integer value: 1');
+        $this->expectValue($result, 1);
     }
 
     private function expectValue($result, $expected)
     {
-        self::assertIsArray($result);
-        self::assertEquals(null, $result['errors']);
+        self::assertInternalType('array', $result);
+        self::assertNull($result['errors']);
         self::assertNotEquals(Utils::undefined(), $result['value']);
         self::assertEquals($expected, $result['value']);
     }
 
     /**
-     * @see it('returns value for negative int input')
+     * @see it('returns no error for negative int input')
      */
     public function testIntReturnsNoErrorForNegativeIntInput() : void
     {
-        $result = Value::coerceValue(-1, Type::int());
+        $result = Value::coerceValue('-1', Type::int());
         $this->expectValue($result, -1);
     }
 
     /**
-     * @see it('returns value for exponent input')
+     * @see it('returns no error for exponent input')
      */
     public function testIntReturnsNoErrorForExponentInput() : void
     {
-        $result = Value::coerceValue(1e3, Type::int());
+        $result = Value::coerceValue('1e3', Type::int());
         $this->expectValue($result, 1000);
     }
 
     /**
-     * @see it('returns null for null value')
+     * @see it('returns no error for null')
      */
     public function testIntReturnsASingleErrorNull() : void
     {
@@ -154,7 +141,7 @@ class CoerceValueTest extends TestCase
     public function testIntReturnsASingleErrorForEmptyValue() : void
     {
         $result = Value::coerceValue('', Type::int());
-        $this->expectGraphQLError(
+        $this->expectError(
             $result,
             'Expected type Int; Int cannot represent non-integer value: (empty string)'
         );
@@ -166,7 +153,7 @@ class CoerceValueTest extends TestCase
     public function testReturnsASingleErrorFor2x32InputAsInt()
     {
         $result = Value::coerceValue(pow(2, 32), Type::int());
-        $this->expectGraphQLError(
+        $this->expectError(
             $result,
             'Expected type Int; Int cannot represent non 32-bit signed integer value: 4294967296'
         );
@@ -177,8 +164,8 @@ class CoerceValueTest extends TestCase
      */
     public function testIntReturnsErrorForFloatInputAsInt() : void
     {
-        $result = Value::coerceValue(1.5, Type::int());
-        $this->expectGraphQLError(
+        $result = Value::coerceValue('1.5', Type::int());
+        $this->expectError(
             $result,
             'Expected type Int; Int cannot represent non-integer value: 1.5'
         );
@@ -191,7 +178,7 @@ class CoerceValueTest extends TestCase
     {
         $inf    = log(0);
         $result = Value::coerceValue($inf, Type::int());
-        $this->expectGraphQLError(
+        $this->expectError(
             $result,
             'Expected type Int; Int cannot represent non 32-bit signed integer value: -INF'
         );
@@ -201,19 +188,21 @@ class CoerceValueTest extends TestCase
     {
         $nan    = acos(8);
         $result = Value::coerceValue($nan, Type::int());
-        $this->expectGraphQLError(
+        $this->expectError(
             $result,
             'Expected type Int; Int cannot represent non-integer value: NAN'
         );
     }
 
+    // Describe: for GraphQLFloat
+
     /**
-     * @see it('returns a single error for string input')
+     * @see it('returns a single error for char input')
      */
     public function testIntReturnsASingleErrorForCharInput() : void
     {
         $result = Value::coerceValue('a', Type::int());
-        $this->expectGraphQLError(
+        $this->expectError(
             $result,
             'Expected type Int; Int cannot represent non-integer value: a'
         );
@@ -225,55 +214,41 @@ class CoerceValueTest extends TestCase
     public function testIntReturnsASingleErrorForMultiCharInput() : void
     {
         $result = Value::coerceValue('meow', Type::int());
-        $this->expectGraphQLError(
+        $this->expectError(
             $result,
             'Expected type Int; Int cannot represent non-integer value: meow'
         );
     }
 
-    // Describe: for GraphQLFloat
-
     /**
-     * @see it('returns value for integer')
+     * @see it('returns no error for int input')
      */
     public function testFloatReturnsNoErrorForIntInput() : void
     {
-        $result = Value::coerceValue(1, Type::float());
+        $result = Value::coerceValue('1', Type::float());
         $this->expectValue($result, 1);
     }
 
     /**
-     * @see it('returns value for decimal')
-     */
-    public function testReturnsValueForDecimal()
-    {
-        $result = Value::coerceValue(1.1, Type::float());
-        $this->expectValue($result, 1.1);
-    }
-
-    /**
-     * @see it('returns value for exponent input')
+     * @see it('returns no error for exponent input')
      */
     public function testFloatReturnsNoErrorForExponentInput() : void
     {
-        $result = Value::coerceValue(1e3, Type::float());
+        $result = Value::coerceValue('1e3', Type::float());
         $this->expectValue($result, 1000);
     }
 
     /**
-     * @see it('returns error for numeric looking string')
+     * @see it('returns no error for float input')
      */
-    public function testFloatReturnsErrorForNumericLookingString()
+    public function testFloatReturnsNoErrorForFloatInput() : void
     {
-        $result = Value::coerceValue('1', Type::float());
-        $this->expectGraphQLError(
-            $result,
-            'Expected type Float; Float cannot represent non numeric value: 1'
-        );
+        $result = Value::coerceValue('1.5', Type::float());
+        $this->expectValue($result, 1.5);
     }
 
     /**
-     * @see it('returns null for null value')
+     * @see it('returns no error for null')
      */
     public function testFloatReturnsASingleErrorNull() : void
     {
@@ -287,7 +262,7 @@ class CoerceValueTest extends TestCase
     public function testFloatReturnsASingleErrorForEmptyValue() : void
     {
         $result = Value::coerceValue('', Type::float());
-        $this->expectGraphQLError(
+        $this->expectError(
             $result,
             'Expected type Float; Float cannot represent non numeric value: (empty string)'
         );
@@ -300,7 +275,7 @@ class CoerceValueTest extends TestCase
     {
         $inf    = log(0);
         $result = Value::coerceValue($inf, Type::float());
-        $this->expectGraphQLError(
+        $this->expectError(
             $result,
             'Expected type Float; Float cannot represent non numeric value: -INF'
         );
@@ -310,7 +285,7 @@ class CoerceValueTest extends TestCase
     {
         $nan    = acos(8);
         $result = Value::coerceValue($nan, Type::float());
-        $this->expectGraphQLError(
+        $this->expectError(
             $result,
             'Expected type Float; Float cannot represent non numeric value: NAN'
         );
@@ -324,7 +299,7 @@ class CoerceValueTest extends TestCase
     public function testFloatReturnsASingleErrorForCharInput() : void
     {
         $result = Value::coerceValue('a', Type::float());
-        $this->expectGraphQLError(
+        $this->expectError(
             $result,
             'Expected type Float; Float cannot represent non numeric value: a'
         );
@@ -336,7 +311,7 @@ class CoerceValueTest extends TestCase
     public function testFloatReturnsASingleErrorForMultiCharInput() : void
     {
         $result = Value::coerceValue('meow', Type::float());
-        $this->expectGraphQLError(
+        $this->expectError(
             $result,
             'Expected type Float; Float cannot represent non numeric value: meow'
         );
@@ -362,7 +337,7 @@ class CoerceValueTest extends TestCase
     public function testReturnsErrorForMisspelledEnumValue() : void
     {
         $result = Value::coerceValue('foo', $this->testEnum);
-        $this->expectGraphQLError($result, 'Expected type TestEnum; did you mean FOO?');
+        $this->expectError($result, 'Expected type TestEnum; did you mean FOO?');
     }
 
     /**
@@ -371,10 +346,10 @@ class CoerceValueTest extends TestCase
     public function testReturnsErrorForIncorrectValueType() : void
     {
         $result1 = Value::coerceValue(123, $this->testEnum);
-        $this->expectGraphQLError($result1, 'Expected type TestEnum.');
+        $this->expectError($result1, 'Expected type TestEnum.');
 
         $result2 = Value::coerceValue(['field' => 'value'], $this->testEnum);
-        $this->expectGraphQLError($result2, 'Expected type TestEnum.');
+        $this->expectError($result2, 'Expected type TestEnum.');
     }
 
     /**
@@ -392,7 +367,7 @@ class CoerceValueTest extends TestCase
     public function testReturnsErrorForNonObjectType() : void
     {
         $result = Value::coerceValue(123, $this->testInputObject);
-        $this->expectGraphQLError($result, 'Expected type TestInputObject to be an object.');
+        $this->expectError($result, 'Expected type TestInputObject to be an object.');
     }
 
     public function testReturnsNoErrorForStdClassInput() : void
@@ -407,7 +382,7 @@ class CoerceValueTest extends TestCase
     public function testReturnErrorForAnInvalidField() : void
     {
         $result = Value::coerceValue(['foo' => 'abc'], $this->testInputObject);
-        $this->expectGraphQLError(
+        $this->expectError(
             $result,
             'Expected type Int at value.foo; Int cannot represent non-integer value: abc'
         );
@@ -434,7 +409,7 @@ class CoerceValueTest extends TestCase
     public function testReturnsErrorForAMissingRequiredField() : void
     {
         $result = Value::coerceValue(['bar' => 123], $this->testInputObject);
-        $this->expectGraphQLError($result, 'Field value.foo of required type Int! was not provided.');
+        $this->expectError($result, 'Field value.foo of required type Int! was not provided.');
     }
 
     /**
@@ -443,7 +418,7 @@ class CoerceValueTest extends TestCase
     public function testReturnsErrorForAnUnknownField() : void
     {
         $result = Value::coerceValue(['foo' => 123, 'unknownField' => 123], $this->testInputObject);
-        $this->expectGraphQLError($result, 'Field "unknownField" is not defined by type TestInputObject.');
+        $this->expectError($result, 'Field "unknownField" is not defined by type TestInputObject.');
     }
 
     /**
@@ -452,6 +427,6 @@ class CoerceValueTest extends TestCase
     public function testReturnsErrorForAMisspelledField() : void
     {
         $result = Value::coerceValue(['foo' => 123, 'bart' => 123], $this->testInputObject);
-        $this->expectGraphQLError($result, 'Field "bart" is not defined by type TestInputObject; did you mean bar?');
+        $this->expectError($result, 'Field "bart" is not defined by type TestInputObject; did you mean bar?');
     }
 }

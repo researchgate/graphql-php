@@ -10,12 +10,12 @@ use GraphQL\Language\AST\FloatValueNode;
 use GraphQL\Language\AST\IntValueNode;
 use GraphQL\Language\AST\Node;
 use GraphQL\Utils\Utils;
-use function floatval;
+use function is_array;
 use function is_bool;
 use function is_finite;
-use function is_float;
-use function is_int;
+use function is_nan;
 use function is_numeric;
+use function sprintf;
 
 class FloatType extends ScalarType
 {
@@ -31,15 +31,32 @@ values as specified by
     /**
      * @param mixed $value
      *
+     * @return float|null
+     *
      * @throws Error
      */
-    public function serialize($value) : float
+    public function serialize($value)
     {
-        $float = is_numeric($value) || is_bool($value)
-            ? (float) $value
-            : null;
+        return $this->coerceFloat($value);
+    }
 
-        if ($float === null || ! is_finite($float)) {
+    private function coerceFloat($value)
+    {
+        if (is_array($value)) {
+            throw new Error(
+                sprintf('Float cannot represent an array value: %s', Utils::printSafe($value))
+            );
+        }
+
+        if ($value === '') {
+            throw new Error(
+                'Float cannot represent non numeric value: (empty string)'
+            );
+        }
+
+        $float = is_numeric($value) || is_bool($value) ? (float) $value : null;
+
+        if ($float === null || ! is_finite($float) || is_nan($float)) {
             throw new Error(
                 'Float cannot represent non numeric value: ' .
                 Utils::printSafe($value)
@@ -52,28 +69,20 @@ values as specified by
     /**
      * @param mixed $value
      *
+     * @return float|null
+     *
      * @throws Error
      */
-    public function parseValue($value) : float
+    public function parseValue($value)
     {
-        $float = is_float($value) || is_int($value)
-            ? (float) $value
-            : null;
-
-        if ($float === null || ! is_finite($float)) {
-            throw new Error(
-                'Float cannot represent non numeric value: ' .
-                Utils::printSafe($value)
-            );
-        }
-
-        return $float;
+        return $this->coerceFloat($value);
     }
 
     /**
+     * @param Node         $valueNode
      * @param mixed[]|null $variables
      *
-     * @return float
+     * @return float|null
      *
      * @throws Exception
      */
@@ -84,6 +93,6 @@ values as specified by
         }
 
         // Intentionally without message, as all information already in wrapped Exception
-        throw new Error();
+        throw new Exception();
     }
 }
